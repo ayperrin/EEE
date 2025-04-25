@@ -1,6 +1,7 @@
 # EEE
 
 git clone https://github.com/ayperrin/EEE
+cd EEE
 
 git pull
 
