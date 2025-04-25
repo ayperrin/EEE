@@ -1,0 +1,203 @@
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries
+```{r}
+if (!require("haven")) {install.packages("haven"); library("haven")}
+if(!require("dplyr")) {install.packages("dplyr"); library("dplyr")}
+if(!require("foreign")) {install.packages("foreign"); library("foreign")}
+
+```
+
+# Data Importation
+```{r}
+us_panel_short <- haven::read_dta("us_panel_short_burkeemmerick.dta")
+us_panel_short <- mutate_all(us_panel_short, as.numeric)
+crop_level_data <- haven::read_dta("crop_level_data.dta")
+crop_level_data <- cbind(crop_level_data[,1], mutate_all(crop_level_data[,-1], as.numeric))
+county_level_data <- haven::read_dta("county_level_data.dta")
+crop_x_county_shocks <- read.csv("crop_x_county_shocks.csv")
+```
+
+# Question 1
+## Data filtering accounting only for cotton, corn and soy
+```{r}
+cotton <- na.omit(us_panel_short[, c("fips", "year", "cottonyield", "cotton_area")])
+corn <- na.omit(us_panel_short[, c("fips", "year", "cornyield", "corn_area")])
+soy <- na.omit(us_panel_short[, c("fips", "year", "soyyield", "soy_area")])
+```
+
+```{r}
+crop_x_county_shocks$fips = sprintf("%02d%03d", crop_x_county_shocks$STATE_FIP, crop_x_county_shocks$CNTY_FIPS)
+crop_x_county_shocks$fips = as.numeric(crop_x_county_shocks$fips)
+
+crop_cotton_county_shocks = crop_x_county_shocks[
+  ,c("fips", grep("^X139", names(crop_x_county_shocks), value = TRUE))]
+crop_corn_county_shocks = crop_x_county_shocks[
+  ,c("fips", grep("^X115", names(crop_x_county_shocks), value = TRUE))]
+crop_soy_county_shocks = crop_x_county_shocks[
+  ,c("fips", grep("^X130", names(crop_x_county_shocks), value = TRUE))]
+
+```
+
+```{r}
+cotton_1959 = cotton[cotton$year==1959,]
+cotton_1959 = merge(cotton_1959, crop_cotton_county_shocks[,c(1,3)], by="fips")
+cotton_1959$id = 139
+cotton_1959 <- cotton_1959 %>% 
+  rename(yield = cottonyield,
+         gddHot_1950 = X139_gddHot_1950)
+
+corn_1959 = corn[corn$year==1959,]
+corn_1959 = merge(corn_1959, crop_corn_county_shocks[,c(1,3)], by="fips")
+corn_1959$id = 115
+corn_1959 <- corn_1959 %>% 
+  rename(yield = cornyield,
+         gddHot_1950 = X115_gddHot_1950)
+
+soy_1959 = soy[soy$year==1959,]
+soy_1959 = merge(soy_1959, crop_soy_county_shocks[,c(1,3)], by="fips")
+soy_1959$id = 130
+soy_1959 <- soy_1959 %>% 
+  rename(yield = soyyield,
+         gddHot_1950 = X130_gddHot_1950)
+```
+
+## Data Management
+First, we divide ExtremeExposure by 1,000.
+```{r}
+data_1959 = rbind(cotton_1959[,c(1,3,5,6)],
+                  corn_1959[,c(1,3,5,6)],
+                  soy_1959[,c(1,3,5,6)])
+data_1959$yield = log(data_1959$yield)
+data_1959$gddHot_1950 = data_1959$gddHot_1950/1000
+```
+
+Second, we add the corresponding "states" to the counties we have in the dataset.
+```{r}
+# Unbalanced Panel Data
+state = c()
+
+for (i in 1:nrow(data_1959)){
+  fips = data_1959$fips[i]
+  if (nchar(fips)==4){
+    state = c(state, substr(fips, 1, 1))
+  }else{
+    state = c(state, substr(fips, 1, 2))
+  }
+}
+
+data_1959 = cbind(state, data_1959)
+data_1959 <- mutate_all(data_1959, as.numeric)
+```
+
+```{r}
+# Balanced Panel Data
+A = intersect(data_1959$fips[which(data_1959$id==130)],data_1959$fips[which(data_1959$id==115)])
+B = intersect(A,data_1959$fips[which(data_1959$id==139)])
+data_1959_balanced=subset(data_1959, fips %in% B)
+```
+
+## Descriptive statistics
+```{r}
+# Unbalanced Panel, Descriptive Statistics
+summary(data_1959[,c(3,4)])
+```
+
+```{r}
+sapply(data_1959[,c(3,4)], sd)
+```
+
+```{r}
+print(paste("N° Unique States:", length(unique(data_1959$state))))
+print(paste("N° Unique Counties:", length(unique(data_1959$fips))))
+print(paste("N° Unique Crop:", length(unique(data_1959$id))))
+```
+
+```{r}
+# Unbalanced Panel, Descriptive Statistics
+summary(data_1959_balanced[,c(3,4)])
+```
+
+```{r}
+sapply(data_1959_balanced[,c(3,4)], sd)
+```
+
+```{r}
+print(paste("N° Unique States:", length(unique(data_1959_balanced$state))))
+print(paste("N° Unique Counties:", length(unique(data_1959_balanced$fips))))
+print(paste("N° Unique Crop:", length(unique(data_1959_balanced$id))))
+```
+
+## Scatter Plot
+```{r}
+plot(data_1959[data_1959$id==139,]$gddHot_1950, data_1959[data_1959$id==139,]$yield, col="blue",
+     xlab="ExtremeExposure/1,000", ylab="Log Yield (Bushels/Acre)", ylim=c(1,7.5))
+points(data_1959[data_1959$id==115,]$gddHot_1950, data_1959[data_1959$id==115,]$yield, col="red")
+points(data_1959[data_1959$id==130,]$gddHot_1950, data_1959[data_1959$id==130,]$yield, col="goldenrod1")
+legend("right", col = c("blue", "red", "goldenrod1"), pch=1,
+         legend = c("Cotton", "Corn", "Soy"))
+grid()
+```
+# Étape 3 : Calcul de la long-difference entre 1970s et 2000s
+
+```{r}
+#2000s-1970s - hot_gdd
+hot_gdd_70 = (crop_level_data$hot_gdd_panel[which(crop_level_data$year==2000)]-crop_level_data$hot_gdd_panel[which(crop_level_data$year==1970)])/10
+
+crop = unique(crop_level_data$crop_censusname)
+crop_level_data = crop_level_data %>%  mutate(ld_hot_gdd_70 = NA) 
+
+i <- 1
+for (j in 1:length(crop)) {
+  while (crop_level_data$crop_censusname[i] == crop[j]) {
+    crop_level_data$ld_hot_gdd_70[i] <- hot_gdd_70[j]
+    i <- i + 1
+  }
+}
+```
+
+```{r}
+#2000s-1970s - ld_variety
+crop_level_data = crop_level_data %>%  mutate(ld_variety_70 = NA) 
+crop_level_data$ld_variety_70[which(crop_level_data$year==2000)] = crop_level_data$ncrop[which(crop_level_data$year==2000)] - crop_level_data$ncrop[which(crop_level_data$year==1970)]
+```
+
+
+```{r}
+write.dta(data_1959, "./data/yield_heat_unbalanced.dta")
+write.dta(data_1959_balanced, "./data/yield_heat_balanced.dta")
+write.dta(crop_level_data, "./data/crop_level_data_adapted.dta")
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+```{r}
+
+
+```
+
+
+
+
+
+
