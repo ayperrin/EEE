@@ -10,6 +10,7 @@ install.packages("plm")
 install.packages("car")
 install.packages("sandwich")
 install.packages("lmtest")
+install.packages("arrow")
 library("haven")
 library("dplyr")
 library("tidyr")
@@ -20,16 +21,17 @@ library("plm")
 library("car")
 library("sandwich")
 library("lmtest")
+library("arrow")
 #####Repository####
-setwd("~/Cours ENSAE 3A/Environmental Economics/wetransfer_for-students_2025-03-14_1338/for students/data")
+setwd("~/work/EEE")
 
 
 
 ####Question 1####
 us_panel_short <- read_dta("us_panel_short_burkeemmerick.dta")
-crop_x_county_shocks <- read.csv("crop_x_county_shocks.csv")
+crop_x_county_shocks <- read_parquet("crop_x_county_shocks.parquet")
 ##We need to merge both the STATE_FIP and the CNTY_FIPS to get a merging key fips that is the same in both tables
-crop_x_county_shocks$fips = sprintf("%02d%03d", crop_x_county_shocks$STATE_FIP, crop_x_county_shocks$CNTY_FIPS)
+crop_x_county_shocks$fips = sprintf("%02d%03d", crop_x_county_shocks$STATE_FIPS, crop_x_county_shocks$CNTY_FIPS)
 crop_x_county_shocks$fips = as.numeric(crop_x_county_shocks$fips)
 ##We only select the columns of interest in the data frame crop_x_county_shocks
 crop_x_county_shocks_q1 <- crop_x_county_shocks[ , c(length(colnames(crop_x_county_shocks)),grep("139|115|130", names(crop_x_county_shocks)))]
@@ -44,9 +46,9 @@ us_panel_short_q1 <- us_panel_short %>%
   summarise(across(c(cornyield, soyyield, cottonyield, corn_area, soy_area, cotton_area), ~ mean(.x, na.rm = TRUE)))
 ##Now we merge the data sets
 data_frame_q1 <- merge(us_panel_short_q1,crop_x_county_shocks_q1, by="fips")
-model_cotton <- lm(cottonyield ~ X139_gddHot_1950 + cotton_area, data = data_frame_q1)
-model_corn <- lm(cornyield ~ X115_gddHot_1950 + corn_area, data = data_frame_q1)
-model_soy <- lm(soyyield ~ X130_gddHot_1950 + soy_area, data = data_frame_q1)
+model_cotton <- lm(cottonyield ~ `139_gddHot_1950` + cotton_area, data = data_frame_q1)
+model_corn <- lm(cornyield ~ `115_gddHot_1950` + corn_area, data = data_frame_q1)
+model_soy <- lm(soyyield ~ `130_gddHot_1950` + soy_area, data = data_frame_q1)
 
 ##Let's look at the estimated parameters
 summary(model_cotton)
@@ -58,11 +60,11 @@ stargazer(model_corn, type = "text")
 stargazer(model_soy, type = "text")
 stargazer(model_cotton,model_corn,model_soy, type="text")
 ##Notice that the coefficient for cotton is positive while we expect a negative sign
-ggplot(data_frame_q1, aes(x = X139_gddHot_1950, y =cottonyield)) +
+ggplot(data_frame_q1, aes(x = `139_gddHot_1950`, y =cottonyield)) +
   geom_point() +
   geom_smooth(method = "lm")
 
-ggplot(data_frame_q1, aes(x = X115_gddHot_1950, y =cornyield)) +
+ggplot(data_frame_q1, aes(x = `115_gddHot_1950`, y =cornyield)) +
   geom_point() +
   geom_smooth(method = "lm")
 
@@ -70,19 +72,19 @@ ggplot(data_frame_q1, aes(x = X115_gddHot_1950, y =cornyield)) +
 table_cotton <- data_frame_q1 %>%
   mutate(yield = log(cottonyield),
          area = cotton_area,
-         gddHot=X139_gddHot_1950,
+         gddHot=`139_gddHot_1950`,
          crop="cotton") %>%
   select(fips,crop,yield,area,gddHot)
 table_corn <- data_frame_q1 %>%
   mutate(yield = log(cornyield),
          area = corn_area,
-         gddHot=X115_gddHot_1950,
+         gddHot=`115_gddHot_1950`,
          crop="corn") %>%
   select(fips,crop,yield,area,gddHot)
 table_soy <- data_frame_q1 %>%
   mutate(yield = log(soyyield),
          area = soy_area,
-         gddHot=X130_gddHot_1950,
+         gddHot=`130_gddHot_1950`,
          crop="soy") %>%
   select(fips,crop,yield,area,gddHot)
 table_final <- rbind(table_cotton,table_corn,table_soy)
